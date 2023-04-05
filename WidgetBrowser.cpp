@@ -2,13 +2,16 @@
 #include <QVBoxLayout>
 #include <QScrollBar>
 #include <QPainter>
+#include <QGuiApplication>
+#include <QClipboard>
 WidgetBrowser::WidgetBrowser(QWidget* parent)
 	:QWidget(parent),
 	_WidgetPort(new WidgetChoosePort(this)),
 	_WidgetViewer(new WidgetViewer(this)),
 	_TextEdit(new QTextEdit(this)),
 	_BtnAppend(new QPushButton(this)),
-	_BtnClear(new QPushButton(this))
+	_BtnClear(new QPushButton(this)),
+	_BtnCopy(new QPushButton(this))
 {
 	auto vLayout = new  QVBoxLayout(this);
 	setLayout(vLayout);
@@ -18,12 +21,15 @@ WidgetBrowser::WidgetBrowser(QWidget* parent)
 
 	{
 		auto hLayout = new QHBoxLayout();
+		auto vvLayout = new QVBoxLayout();
 		hLayout->setSpacing(0);
 		hLayout->setMargin(0);
 		hLayout->addWidget(_TextEdit);
-		hLayout->addWidget(_BtnAppend); _BtnAppend->setText("添加");
-		hLayout->addWidget(_BtnClear); _BtnClear->setText("清空");
+		vvLayout->addWidget(_BtnAppend); _BtnAppend->setText(u8"添加");
+		vvLayout->addWidget(_BtnClear); _BtnClear->setText(u8"清空");
+		vvLayout->addWidget(_BtnCopy); _BtnCopy->setText(u8"复制");
 		vLayout->addLayout(hLayout);
+		hLayout->addLayout(vvLayout);
 	}
 	InitUI();
 }
@@ -31,12 +37,14 @@ WidgetBrowser::WidgetBrowser(QWidget* parent)
 void WidgetBrowser::InitUI()
 {
 	connect(_BtnAppend, &QPushButton::clicked, this, [this]() {
-
 		QString content = _TextEdit->toPlainText();
 		_WidgetViewer->AppendData(content);
 	});
 	connect(_BtnClear, &QPushButton::clicked, this, [this]() {
 		_WidgetViewer->Clear();
+	});
+	connect(_BtnCopy, &QPushButton::clicked, this, [this]() {
+		_WidgetViewer->Copy();
 	});
 	UpdateUI();
 }
@@ -159,18 +167,38 @@ void WidgetViewer::AppendData(QString _text)
 	verticalScrollBar()->setRange(0, _CharH * (LineCount() + 1) - viewport()->size().height() + 6);
 	verticalScrollBar()->setValue(verticalScrollBar()->maximum());
 	setUpdatesEnabled(true);
-	update();
+	this->viewport()->update();
 }
 
 void WidgetViewer::Clear()
 {
 	_ContentList.clear();
-	update();
+	this->viewport()->update();
 }
 
-void WidgetViewer::Copy()
+QString WidgetViewer::Copy()
 {
 	// copy the selected text to the clip board
+	QClipboard* clipboard = QGuiApplication::clipboard();
+	QString originalText = clipboard->text();
+	// etc.
+
+	// get the selected text
+	auto f_min = [](int a, int b)->int {return  a > b ? b : a; };
+	auto f_max = [](int a, int b)->int {return  a < b ? b : a; };
+	int firstHightLine = f_min(_CurCursorPos.y() / _CharH, _LastCursorPos.y() / _CharH);
+	int lastHightLine = f_max(_CurCursorPos.y() / _CharH, _LastCursorPos.y() / _CharH);
+	int firstHightCol = _CurCursorPos.y() > _LastCursorPos.y() ? _LastCursorPos.x() / _CharW : _CurCursorPos.x() / _CharW;
+	int lastHightCol = _CurCursorPos.y() > _LastCursorPos.y() ? _CurCursorPos.x() / _CharW : _LastCursorPos.x() / _CharW;
+
+	QString result;
+	for (int l = firstHightLine; l < lastHightLine && l < _ContentList.size(); l++)
+	{
+		result.append(_ContentList.at(l));
+	}
+
+	clipboard->setText(result);
+	return QString();
 }
 
 void WidgetViewer::resizeEvent(QResizeEvent* event)
@@ -241,53 +269,75 @@ void WidgetViewer::paintEvent(QPaintEvent* paintEvent)
 	int lastHightLine = f_max(_CurCursorPos.y() / _CharH, _LastCursorPos.y() / _CharH);
 	int firstHightCol = _CurCursorPos.y() > _LastCursorPos.y() ? _LastCursorPos.x() / _CharW : _CurCursorPos.x() / _CharW;
 	int lastHightCol = _CurCursorPos.y() > _LastCursorPos.y() ? _CurCursorPos.x() / _CharW : _LastCursorPos.x() / _CharW;
+	if (firstHightLine == lastHightLine && firstHightCol > lastHightCol)
+	{
+		int temp = firstHightCol;
+		firstHightCol = lastHightCol;
+		lastHightCol = temp;
+	}
 
 	if (lastLine > LineCount())
 	{
 		lastLine = LineCount();
 	}
 
+	QFont font1("monoSpace");
+	font1.setPixelSize(_CharH);
+	p.setFont(font1);
+	p.setPen(formatColor);
 	for (int l = firstLine; l < lastLine; l++)
 	{
 		pos.setX(_RowPrefix);
 
+		int textLineWidth = 0;
+		for (auto& item : _ContentList.at(l))
+		{
+			textLineWidth += (IsWideChar(item)? _CharW*2:_CharW);
+		}
+
 		// draw highlight for each line
 		if (l > firstHightLine && l < lastHightLine)
 		{
-			p.fillRect(QRect(pos, QSize(_ContentList.at(l).size()*_CharW, _CharH)).normalized(), hightLightColor);
+			p.fillRect(QRect(pos, QSize(textLineWidth, _CharH)).normalized(), hightLightColor);
 		}
 		else if (l == firstHightLine && l == lastHightLine)
 		{
-			p.fillRect(QRect(pos + QPoint(firstHightCol * _CharW, 0), QSize((lastHightCol-firstHightCol) * _CharW, _CharH)).normalized(), hightLightColor);
+			p.fillRect(QRect(pos + QPoint(firstHightCol * _CharW, 0), QSize(f_min(lastHightCol*_CharW, f_max(textLineWidth - _CharW * firstHightCol, 0)), _CharH)).normalized(), hightLightColor);
+			printf("??\n");
 		}
 		else if (l == firstHightLine)
 		{
-			p.fillRect(QRect(pos+ QPoint(firstHightCol * _CharW,0), QSize((_ContentList.at(l).size()- firstHightCol) * _CharW, _CharH)).normalized(), hightLightColor);
+			p.fillRect(QRect(pos+ QPoint(firstHightCol * _CharW,0), QSize(f_max(textLineWidth - _CharW* firstHightCol,0) , _CharH)).normalized(), hightLightColor);
+			printf("!!\n");
 		}
 		else if (l == lastHightLine)
 		{
-			p.fillRect(QRect(pos, QSize( f_min(lastHightCol, _ContentList.at(l).size())* _CharW, _CharH)).normalized(), hightLightColor);
+			p.fillRect(QRect(pos, QSize( f_min(lastHightCol * _CharW, textLineWidth), _CharH)).normalized(), hightLightColor);
 		}
+
+		pos.setY(pos.y() + _CharH);
 
 		// draw text
-		for (int c = 0; c < _ContentList.at(l).size(); c++)
-		{
-			const QChar& vtChar = _ContentList.at(l)[c];
-			//p.setPen(vtChar.format().foreground());
-			p.setPen(formatColor);
+		p.drawText(pos,_ContentList.at(l));
 
-			// draw highlight for each node
-			if (IsWideChar(vtChar))
-			{
-				p.drawText(QRect(pos, QSize(_CharW*2, _CharH + 1)).normalized(), Qt::AlignLeft, QString(vtChar));
-				pos.setX(pos.x() + _CharW*2);
-			}
-			else
-			{
-				p.drawText(QRect(pos, QSize(_CharW, _CharH)).normalized(), Qt::AlignCenter, QString(vtChar));
-				pos.setX(pos.x() + _CharW);
-			}
-		}
-		pos.setY(pos.y() + _CharH);
+		// draw text
+		//for (int c = 0; c < _ContentList.at(l).size(); c++)
+		//{
+		//	const QChar& vtChar = _ContentList.at(l)[c];
+		//	//p.setPen(vtChar.format().foreground());
+		//	p.setPen(formatColor);
+
+		//	// draw highlight for each node
+		//	if (IsWideChar(vtChar))
+		//	{
+		//		p.drawText(QRect(pos, QSize(_CharW*2, _CharH + 1)).normalized(), Qt::AlignLeft, QString(vtChar));
+		//		pos.setX(pos.x() + _CharW*2);
+		//	}
+		//	else
+		//	{
+		//		p.drawText(QRect(pos, QSize(_CharW, _CharH)).normalized(), Qt::AlignCenter, QString(vtChar));
+		//		pos.setX(pos.x() + _CharW);
+		//	}
+		//}
 	}
 }

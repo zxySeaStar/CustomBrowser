@@ -20,6 +20,7 @@ private:
 	QTextEdit* _TextEdit;
 	QPushButton* _BtnAppend;
 	QPushButton* _BtnClear;
+	QPushButton* _BtnCopy;
 
 	// line 
 	// paintEvent draw for each line
@@ -57,7 +58,7 @@ public:
 	explicit WidgetViewer(QWidget* parent = nullptr);
 	void AppendData(QString _text);
 	void Clear();
-	void Copy();
+	QString Copy();
 private:
 	// append the data and update the scrollbar
 	// todo:
@@ -90,7 +91,7 @@ private:
 
 
 	int _RowPrefix = 6;
-	int _ColPrefix = 3;
+	int _ColPrefix = 6;
 };
 
 #endif
