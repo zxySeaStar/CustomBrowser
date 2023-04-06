@@ -198,17 +198,34 @@ QString WidgetViewer::Copy()
 	// get the selected text
 	auto f_min = [](int a, int b)->int {return  a > b ? b : a; };
 	auto f_max = [](int a, int b)->int {return  a < b ? b : a; };
-	int firstHightLine = f_min(_CurCursorPos.y() / _CharH, _LastCursorPos.y() / _CharH);
-	int lastHightLine = f_max(_CurCursorPos.y() / _CharH, _LastCursorPos.y() / _CharH);
-	int firstHightCol = _CurCursorPos.y() > _LastCursorPos.y() ? _LastCursorPos.x() / _CharW : _CurCursorPos.x() / _CharW;
-	int lastHightCol = _CurCursorPos.y() > _LastCursorPos.y() ? _CurCursorPos.x() / _CharW : _LastCursorPos.x() / _CharW;
 
 	QString result;
-	for (int l = firstHightLine; l < lastHightLine && l < _ContentList.size(); l++)
+	if (_ContentList.size() == 0)
 	{
-		result.append(_ContentList.at(l));
+		return QString();
 	}
+	// for the first line
+	if (_SelectPBegin.y() != _SelectPEnd.y())
+	{
+		// line
+		for (int l = _SelectPBegin.y() ; l < _SelectPEnd.y() && l < _ContentList.size(); l++)
+		{
+			result.append(_ContentList.at(l));
+		}
 
+		// last line
+		if (_SelectPEnd.y() < _ContentList.size())
+		{
+			result.append(_ContentList.at(_SelectPEnd.y()).mid(0,_SelectPEnd.x()));
+		}
+	}
+	else
+	{
+		if (_SelectPEnd.y() < _ContentList.size())
+		{
+			result.append(_ContentList.at(_SelectPEnd.y()).mid(_SelectPBegin.x(), _SelectPEnd.x()- _SelectPBegin.x()));
+		}
+	}
 	clipboard->setText(result);
 	return QString();
 }
