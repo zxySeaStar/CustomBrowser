@@ -6,6 +6,7 @@
 #include <QAbstractScrollArea>
 #include <QTextEdit>
 #include <QMouseEvent>
+#include <QPoint>
 class WidgetChoosePort;
 class WidgetViewer;
 class WidgetBrowser :public QWidget {
@@ -59,6 +60,9 @@ public:
 	void AppendData(QString _text);
 	void Clear();
 	QString Copy();
+
+public slots:
+	void adjust();
 private:
 	// append the data and update the scrollbar
 	// todo:
@@ -66,6 +70,8 @@ private:
 	// 1.5 copy selected text
 	// 2. process bar
 	// 3. color text
+
+	// 4. scrollbar problem
 	void paintEvent(QPaintEvent* paintEvent) override;
 	void resizeEvent(QResizeEvent* paintEvent) override;
 	virtual void mousePressEvent(QMouseEvent* _event) override;
@@ -81,8 +87,9 @@ private:
 	{
 		return _ContentList.size();
 	}
-	int _CharH = 13;
-	int _CharW = 7;
+
+	int _CharH = 12*2;
+	int _CharW = 12;
 	QList<QString> _ContentList;
 
 	QPoint _LastCursorPos;
@@ -92,6 +99,22 @@ private:
 
 	int _RowPrefix = 6;
 	int _ColPrefix = 6;
+
+
+	// first show line
+	int _RowShowFirst{ 0 }; // #line for whole page
+	int _RowShowNum{ 0 }; // #line show in one page
+	int _DataShow{ 0 }; // #dataline show in current page
+	QPoint _SelectPInit;
+	QPoint _SelectPBegin;
+	QPoint _SelectPEnd;
+
+	QPoint CursorPosition(QPoint _pos);
+	void SetSelection(QPoint _pos);
+	void ResetSelection(QPoint _pos);
+	bool CursorVisable(QPoint _pos);
+
+
 };
 
 #endif
