@@ -66,10 +66,11 @@ public:
 	// line offset
 	virtual int GetOffset() = 0;
 	virtual NodeType GetType() = 0;
-	virtual QString& GetText()
+    virtual QString GetText()
 	{
-        return _Text;
+        return nextNode==nullptr?_Text:_Text+nextNode->GetText() ;
 	}
+    virtual QRect GetRect(QRect _rect) =0;
 	virtual void Paint(QPainter* _painter,QPoint pos) = 0;
 	//virtual QRect GetRect(QRect _rect) = 0; // interact with the cursor, get hightlight rect
 	std::shared_ptr<ViewLineNode> nextNode;
@@ -106,11 +107,7 @@ public:
 	{
 		return _Color;
 	}
-	QString& GetText() override
-	{
-		return _Text;
-	}
-
+    virtual QRect GetRect(QRect _rect) override;
 	virtual void Paint(QPainter* _painter, QPoint pos) override;
 private:
 	int _Offset = 0;
@@ -133,6 +130,7 @@ public:
 		_ProcessNum = _num;
 	}
 	virtual void Paint(QPainter* _painter, QPoint pos) override;
+    virtual QRect GetRect(QRect _rect) override;
 private:
 	int _Offset = 0;
 	int _ProcessNum=0;
@@ -167,8 +165,6 @@ private:
 	virtual void mousePressEvent(QMouseEvent* _event) override;
 	virtual void mouseReleaseEvent(QMouseEvent* _event) override;
 	virtual void mouseMoveEvent(QMouseEvent* _event) override;
-
-	void PaintString(std::shared_ptr<ViewLineString> _node,QPoint _pos, QPainter* _painter);
 
 	bool IsWideChar(QChar _char)
 	{

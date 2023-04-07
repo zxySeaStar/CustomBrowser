@@ -44,7 +44,7 @@ WidgetBrowser::WidgetBrowser(QWidget* parent)
             timer->stop();
         }
     });
-    timer->start(250);
+    //timer->start(250);
 	InitUI();
 }
 
@@ -177,7 +177,8 @@ WidgetViewer::WidgetViewer(QWidget* parent)
 	_CharW = fm.boundingRect("9").width();
 
 	AppendData("1");
-	AppendData("<font color=\"red\">hello world!</font>");
+    AppendData("<font>nihao world!</font><font color=\"red\">hello world!</font>");
+    AppendData("nihao world!hello world!");
 	AppendData("<font color=\"green\">hello world!</font>");
 	AppendData("12");
 	AppendData("134");
@@ -236,7 +237,6 @@ void WidgetViewer::AppendData(QString _text)
 				curNode->nextNode = strNode;
 				curNode = std::move(strNode);
 			}
-			break;
 		}
 		if (rootNode->nextNode)
 		{
@@ -273,8 +273,6 @@ QString WidgetViewer::Copy()
 {
 	// copy the selected text to the clip board
 	QClipboard* clipboard = QGuiApplication::clipboard();
-	QString originalText = clipboard->text();
-	// etc.
 
 	// get the selected text
 	auto f_min = [](int a, int b)->int {return  a > b ? b : a; };
@@ -294,16 +292,14 @@ QString WidgetViewer::Copy()
 		}
 
 		auto lineItem = std::dynamic_pointer_cast<ViewLineString>(_ContentRichList.at(absl));
-		//int textLineWidth = fm.boundingRect(lineItem->GetText()).width();
-
-
+        QString lineItemText = lineItem->GetText();
 		if (absl > _SelectPBegin.y() && absl < _SelectPEnd.y())
 		{
-			result.append(lineItem->GetText());
+            result.append(lineItemText);
 		}
 		else
 		{
-			int textLineWidth = fm.boundingRect(lineItem->GetText()).width();
+            int textLineWidth = fm.boundingRect(lineItemText).width();
 			int lpos = 0;
 			int rpos = textLineWidth;
 			if (absl == _SelectPBegin.y())
@@ -325,26 +321,26 @@ QString WidgetViewer::Copy()
 				continue;
 			}
 			int hlIndex = 0;
-			int hrIndex = lineItem->GetText().size() - 1;
-			for (int i = 0; i < lineItem->GetText().size(); i++)
+            int hrIndex = lineItemText.size() - 1;
+            for (int i = 0; i < lineItemText.size(); i++)
 			{
-				int charWidth = fm.boundingRect(lineItem->GetText().mid(i)).width();
+                int charWidth = fm.boundingRect(lineItemText.mid(i)).width();
 				if (textLineWidth - charWidth > lpos)
 				{
 					break;
 				}
 				hlIndex = i;
 			}
-			for (int i = lineItem->GetText().size(); i > 0; i--)
+            for (int i = lineItemText.size(); i > 0; i--)
 			{
-				int charWidth = fm.boundingRect(lineItem->GetText().mid(0, i)).width();
+                int charWidth = fm.boundingRect(lineItemText.mid(0, i)).width();
 				if (charWidth < rpos)
 				{
 					break;
 				}
 				hrIndex = i;
 			}
-			result.append(lineItem->GetText().mid(hlIndex, hrIndex - hlIndex));
+            result.append(lineItemText.mid(hlIndex, hrIndex - hlIndex));
 		}
 		if (absl != _SelectPEnd.y()) {
 			result.append("\n");
@@ -464,11 +460,6 @@ void WidgetViewer::mouseMoveEvent(QMouseEvent* _event)
 	}
 }
 
-void WidgetViewer::PaintString(std::shared_ptr<ViewLineString> _node, QPoint _pos, QPainter* _painter)
-{
-
-}
-
 void WidgetViewer::adjust() {
 	// adjust the scrollbar value
 	// total number of line show
@@ -581,8 +572,8 @@ void WidgetViewer::paintEvent(QPaintEvent* paintEvent)
 #if DRAW_RICH_CONTENT
 
 		auto lineItem = _ContentRichList.at(absl);
-
-        int textLineWidth = fm.boundingRect(lineItem->GetText()).width();
+        QString lineItemText = lineItem->GetText();
+        int textLineWidth = fm.boundingRect(lineItemText).width();
         // draw hightlight
         if (absl >= _SelectPBegin.y() && absl <= _SelectPEnd.y())
         {
@@ -613,18 +604,18 @@ void WidgetViewer::paintEvent(QPaintEvent* paintEvent)
                 {
                     int hlpos = 0;
                     int hrpos = textLineWidth;
-                    for (int i = 0; i < lineItem->GetText().size(); i++)
+                    for (int i = 0; i < lineItemText.size(); i++)
                     {
-                        int charWidth = fm.boundingRect(lineItem->GetText().mid(i)).width();
+                        int charWidth = fm.boundingRect(lineItemText.mid(i)).width();
                         if (textLineWidth - charWidth > lpos)
                         {
                             break;
                         }
                         hlpos = textLineWidth - charWidth;
                     }
-                    for (int i = lineItem->GetText().size(); i > 0; i--)
+                    for (int i = lineItemText.size(); i > 0; i--)
                     {
-                        int charWidth = fm.boundingRect(lineItem->GetText().mid(0, i)).width();
+                        int charWidth = fm.boundingRect(lineItemText.mid(0, i)).width();
                         if (charWidth < rpos)
                         {
                             break;
@@ -730,7 +721,60 @@ void ViewLineString::Paint(QPainter* _painter, QPoint pos)
 	{
 		_painter->setPen(QColor(0,0,0));
 	}
-	_painter->drawText(pos, GetText());
+    _painter->drawText(pos + QPoint(0,-_painter->fontMetrics().descent()), _Text);
+    if(nextNode)
+    {
+        nextNode->Paint(_painter,pos + QPoint(_painter->fontMetrics().horizontalAdvance(_Text),0));
+    }
+}
+
+QRect ViewLineString::GetRect(QRect _rect)
+{
+    // giving a width
+
+
+
+//    int lpos = 0;
+//    int rpos = textLineWidth;
+//    if (absl == _SelectPBegin.y())
+//    {
+//        lpos = f_min((_SelectPBegin.x()) * _CharW, textLineWidth);
+//    }
+//    if (absl == _SelectPEnd.y())
+//    {
+//        rpos = f_min((_SelectPEnd.x()) * _CharW, textLineWidth);
+//    }
+//    // for the first line andd last line, handle char one by one
+//    // tranverse the line, find the hightlight left pos, and right pos
+//    //for (auto& item : _ContentList.at(absl))
+//    //{
+//    //	int charWidth = fm.boundingRect(item).width();
+//    //}
+
+//    if (lpos < textLineWidth)
+//    {
+//        int hlpos = 0;
+//        int hrpos = textLineWidth;
+//        for (int i = 0; i < lineItem->GetText().size(); i++)
+//        {
+//            int charWidth = fm.boundingRect(lineItem->GetText().mid(i)).width();
+//            if (textLineWidth - charWidth > lpos)
+//            {
+//                break;
+//            }
+//            hlpos = textLineWidth - charWidth;
+//        }
+//        for (int i = lineItem->GetText().size(); i > 0; i--)
+//        {
+//            int charWidth = fm.boundingRect(lineItem->GetText().mid(0, i)).width();
+//            if (charWidth < rpos)
+//            {
+//                break;
+//            }
+//            hrpos = charWidth;
+//        }
+//    }
+    return QRect();
 }
 
 /*
@@ -749,16 +793,21 @@ void ViewLineProcessBar::Paint(QPainter* _painter, QPoint pos)
 	
     QColor backColor(Qt::white);
     QColor borderCoolor(QColor(0xFF,0xFF,0xFF).rgb() - backColor.rgb());
-    qreal mid_y = pos.y() -(12*2)/2;
-    qreal radius = 8;
+    qreal mid_y = pos.y() - _painter->fontMetrics().descent() - _painter->fontMetrics().ascent()/2;
+    qreal radius = _painter->fontMetrics().ascent()/2;
     qreal processBarWidth = 400;
     _painter->setRenderHint(QPainter::Antialiasing);
     _painter->setPen(borderCoolor);
     _painter->setBrush(backColor);
     _painter->drawRoundedRect(QRect(QPoint(pos.x(), mid_y-radius), QSize(processBarWidth +radius, radius*2)),radius/2,radius/2);
     _painter->setBrush(borderCoolor);
-    _painter->drawRoundedRect(QRect(QPoint(pos.x()+radius/2, mid_y-radius/2), QSize(processBarWidth*_ProcessNum/100, radius*2/2)),radius/3,radius/3);
+    _painter->drawRoundedRect(QRect(QPoint(pos.x()+radius/2, mid_y-radius/2), QSize(processBarWidth*_ProcessNum/100, radius*2/2)),radius/4,radius/4);
     _painter->setPen(borderCoolor);
-    _painter->drawText(QPoint(pos.x()+processBarWidth+ 2*radius,mid_y+radius),QString::number(_ProcessNum)+"%");
+    _painter->drawText(QPoint(pos.x()+processBarWidth+ 2*radius,pos.y()-_painter->fontMetrics().descent()),QString::number(_ProcessNum)+"%");
 
+}
+
+QRect ViewLineProcessBar::GetRect(QRect _rect)
+{
+    return QRect();
 }
