@@ -153,6 +153,14 @@ WidgetViewer::WidgetViewer(QWidget* parent)
 {
 	setMouseTracking(true);
 	connect(verticalScrollBar(), SIGNAL(valueChanged(int)), this, SLOT(adjust()));
+
+	_Format.setFamily("monoSpace");
+	_Format.setPixelSize(_CharH);
+	_Format.setLetterSpacing(QFont::AbsoluteSpacing, 0);
+	
+	QFontMetrics fm(_Format, viewport());
+	_CharW = fm.boundingRect("9").width();
+
 	AppendData("1");
 	AppendData("12");
 	AppendData("134");
@@ -204,28 +212,79 @@ QString WidgetViewer::Copy()
 	{
 		return QString();
 	}
-	// for the first line
-	if (_SelectPBegin.y() != _SelectPEnd.y())
-	{
-		// line
-		for (int l = _SelectPBegin.y() ; l < _SelectPEnd.y() && l < _ContentList.size(); l++)
-		{
-			result.append(_ContentList.at(l));
-		}
+	//// for the first line
+	//if (_SelectPBegin.y() != _SelectPEnd.y())
+	//{
+	//	// line
+	//	for (int l = _SelectPBegin.y() ; l < _SelectPEnd.y() && l < _ContentList.size(); l++)
+	//	{
+	//		result.append(_ContentList.at(l));
+	//	}
 
-		// last line
-		if (_SelectPEnd.y() < _ContentList.size())
-		{
-			result.append(_ContentList.at(_SelectPEnd.y()).mid(0,_SelectPEnd.x()));
-		}
-	}
-	else
+	//	// last line
+	//	if (_SelectPEnd.y() < _ContentList.size())
+	//	{
+	//		result.append(_ContentList.at(_SelectPEnd.y()).mid(0,_SelectPEnd.x()));
+	//	}
+	//}
+	//else
+	//{
+	//	if (_SelectPEnd.y() < _ContentList.size())
+	//	{
+	//		result.append(_ContentList.at(_SelectPEnd.y()).mid(_SelectPBegin.x(), _SelectPEnd.x()- _SelectPBegin.x()));
+	//	}
+	//}
+	QFontMetrics fm(_Format, viewport());
+	for (int absl = _SelectPBegin.y(); absl <= _SelectPEnd.y() && absl < _ContentList.size(); absl++)
 	{
-		if (_SelectPEnd.y() < _ContentList.size())
+		if (absl > _SelectPBegin.y() && absl < _SelectPEnd.y())
 		{
-			result.append(_ContentList.at(_SelectPEnd.y()).mid(_SelectPBegin.x(), _SelectPEnd.x()- _SelectPBegin.x()));
+			result.append(_ContentList.at(absl));
 		}
+		else
+		{
+			int textLineWidth = fm.boundingRect(_ContentList.at(absl)).width();
+			int lpos = 0;
+			int rpos = textLineWidth;
+			if (absl == _SelectPBegin.y())
+			{
+				lpos = f_min((_SelectPBegin.x()) * _CharW, textLineWidth);
+			}
+			if (absl == _SelectPEnd.y())
+			{
+				rpos = f_min((_SelectPEnd.x()) * _CharW, textLineWidth);
+			}
+			// for the first line andd last line, handle char one by one
+			// tranverse the line, find the hightlight left pos, and right pos
+			//for (auto& item : _ContentList.at(absl))
+			//{
+			//	int charWidth = fm.boundingRect(item).width();	
+			//}
+			int hlIndex = 0;
+			int hrIndex = _ContentList.at(absl).size()-1;
+			for (int i = 0; i < _ContentList.at(absl).size(); i++)
+			{
+				int charWidth = fm.boundingRect(_ContentList.at(absl).mid(i)).width();
+				if (textLineWidth - charWidth > lpos)
+				{
+					break;
+				}
+				hlIndex = i;
+			}
+			for (int i = _ContentList.at(absl).size(); i > 0; i--)
+			{
+				int charWidth = fm.boundingRect(_ContentList.at(absl).mid(0, i)).width();
+				if (charWidth < rpos)
+				{
+					break;
+				}
+				hrIndex = i;
+			}
+			result.append(_ContentList.at(absl).mid(hlIndex, hrIndex-hlIndex));
+		}
+		result.append("\n");
 	}
+
 	clipboard->setText(result);
 	return QString();
 }
@@ -365,16 +424,12 @@ void WidgetViewer::paintEvent(QPaintEvent* paintEvent)
 	QPainter p(viewport());
 	QColor formatColor = QColor(0, 0, 0);
 	QColor hightLightColor("yellow");
-	//p.setBrush(QColor(0x23, 0x26, 0x29));
-	QFont font1("Courier");
-	font1.setPixelSize(_CharH);
-	font1.setLetterSpacing(QFont::AbsoluteSpacing, 0);
-	p.setFont(font1);
+	p.setFont(_Format);
 	p.setPen(formatColor);
 	auto f_min = [](int a, int b)->int {return  a > b ? b : a; };
 	auto f_max = [](int a, int b)->int {return  a < b ? b : a; };
 	QPoint pos(_ColPrefix, _RowPrefix);
-	QFontMetrics fm(font1, p.device());
+	QFontMetrics fm(_Format, p.device());
 	for (int l = 0; l < _DataShow; l++)
 	{
 
@@ -391,7 +446,47 @@ void WidgetViewer::paintEvent(QPaintEvent* paintEvent)
 			{
 				p.fillRect(QRect(pos, QSize(textLineWidth, _CharH)).normalized(), hightLightColor);
 			}
-			else if (absl == _SelectPBegin.y() && absl == _SelectPEnd.y())
+			else
+			{
+				int lpos = 0;
+				int rpos = textLineWidth;
+				if(absl == _SelectPBegin.y())
+				{
+					lpos = f_min((_SelectPBegin.x()) * _CharW, textLineWidth);
+				}
+				if(absl == _SelectPEnd.y())
+				{
+					rpos = f_min((_SelectPEnd.x()) * _CharW, textLineWidth);
+				}
+				// for the first line andd last line, handle char one by one
+				// tranverse the line, find the hightlight left pos, and right pos
+				//for (auto& item : _ContentList.at(absl))
+				//{
+				//	int charWidth = fm.boundingRect(item).width();	
+				//}
+				int hlpos = 0;
+				int hrpos = textLineWidth;
+				for (int i = 0; i < _ContentList.at(absl).size(); i++)
+				{
+					int charWidth = fm.boundingRect(_ContentList.at(absl).mid(i)).width();
+					if (textLineWidth - charWidth > lpos)
+					{
+						break;
+					}
+					hlpos = textLineWidth - charWidth;
+				}
+				for (int i = _ContentList.at(absl).size(); i > 0; i--)
+				{
+					int charWidth = fm.boundingRect(_ContentList.at(absl).mid(0,i)).width();
+					if (charWidth < rpos)
+					{
+						break;
+					}
+					hrpos = charWidth;
+				}
+				p.fillRect(QRect(pos+QPoint(hlpos,0), QSize(hrpos-hlpos, _CharH)).normalized(), hightLightColor);
+			}
+			/*else if (absl == _SelectPBegin.y() && absl == _SelectPEnd.y())
 			{
 				int width = (_SelectPEnd.x() - _SelectPBegin.x()) * _CharW;
 				if (_SelectPBegin.x() * _CharW > textLineWidth)
@@ -418,7 +513,7 @@ void WidgetViewer::paintEvent(QPaintEvent* paintEvent)
 			{
 				int width = f_min((_SelectPEnd.x()) * _CharW,textLineWidth);
 				p.fillRect(QRect(pos, QSize(width, _CharH)).normalized(), hightLightColor);
-			}
+			}*/
 		}
 		pos += QPoint(0, _CharH);
 		p.drawText(pos,_ContentList.at(absl));

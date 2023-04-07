@@ -109,6 +109,8 @@ private:
 	QPoint _SelectPBegin;
 	QPoint _SelectPEnd;
 
+	QFont _Format;
+
 	QPoint CursorPosition(QPoint _pos);
 	void SetSelection(QPoint _pos);
 	void ResetSelection(QPoint _pos);
