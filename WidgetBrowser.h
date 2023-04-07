@@ -7,6 +7,7 @@
 #include <QTextEdit>
 #include <QMouseEvent>
 #include <QPoint>
+#include <QString>
 class WidgetChoosePort;
 class WidgetViewer;
 class WidgetBrowser :public QWidget {
@@ -53,6 +54,93 @@ private:
 	bool _IsConnected = false;
 };
 
+
+class ViewLineNode {
+public:
+	enum class NodeType {
+		None,
+		String,
+		ProcessBar
+	};
+	// line offset
+	virtual int GetOffset() = 0;
+	virtual NodeType GetType() = 0;
+	virtual QString& GetText()
+	{
+		return QString();
+	}
+	virtual void Paint(QPainter* _painter,QPoint pos) = 0;
+	//virtual QRect GetRect(QRect _rect) = 0; // interact with the cursor, get hightlight rect
+	std::shared_ptr<ViewLineNode> nextNode;
+};
+
+class ViewLineString : public ViewLineNode
+{
+public:
+	//~ViewLineString()
+	//{
+	//	printf("release\n");
+	//}
+	virtual int GetOffset() override{
+		return _Offset;
+	}
+	virtual NodeType GetType() override {
+		return _Type;
+	}
+	//virtual QRect GetRect(QRect _rect) override;
+	//void SetText(std::string _info)
+	//{
+	//	_Text = QString::fromStdString(_info);
+	//}
+	void SetText(QString _info)
+	{
+		_Text = _info;
+	}
+	void SetColor(std::string _value)
+	{
+		_Color = QString::fromStdString(_value);
+	}
+	QString GetColor()
+	{
+		return _Color;
+	}
+	QString& GetText() override
+	{
+		return _Text;
+	}
+
+	virtual void Paint(QPainter* _painter, QPoint pos) override;
+private:
+	int _Offset = 0;
+	NodeType _Type{ NodeType::String};
+	QString _Color;
+	QString _Text;
+};
+
+class ViewLineProcessBar : public ViewLineNode
+{
+public:
+	virtual int GetOffset() override {
+		return _Offset;
+	}
+	virtual NodeType GetType() override {
+		return _Type;
+	}
+	void SetProcess(int _num)
+	{
+		_ProcessNum = _num;
+	}
+	virtual void Paint(QPainter* _painter, QPoint pos) override;
+private:
+	int _Offset = 0;
+	int _ProcessNum=0;
+	NodeType _Type{ NodeType::ProcessBar };
+};
+
+
+
+#define DRAW_RICH_CONTENT 1
+
 class WidgetViewer : public QAbstractScrollArea {
 	Q_OBJECT
 public:
@@ -78,6 +166,8 @@ private:
 	virtual void mouseReleaseEvent(QMouseEvent* _event) override;
 	virtual void mouseMoveEvent(QMouseEvent* _event) override;
 
+	void PaintString(std::shared_ptr<ViewLineString> _node,QPoint _pos, QPainter* _painter);
+
 	bool IsWideChar(QChar _char)
 	{
 		return _char.unicode() >= 0x4e00 && _char.unicode() <= 0x9FA5;
@@ -85,12 +175,22 @@ private:
 
 	int LineCount()
 	{
+#if DRAW_RICH_CONTENT
+		return _ContentRichList.size();
+#else
 		return _ContentList.size();
+
+#endif
 	}
 
 	int _CharH = 12*2;
 	int _CharW = 12;
+#if DRAW_RICH_CONTENT
+	QList<std::shared_ptr<ViewLineNode>> _ContentRichList;
+#else
 	QList<QString> _ContentList;
+#endif
+	
 
 	QPoint _LastCursorPos;
 	QPoint _CurCursorPos;
@@ -106,8 +206,8 @@ private:
 	int _RowShowNum{ 0 }; // #line show in one page
 	int _DataShow{ 0 }; // #dataline show in current page
 	QPoint _SelectPInit;
-	QPoint _SelectPBegin;
-	QPoint _SelectPEnd;
+	QPoint _SelectPBegin{ -1,-1 };
+	QPoint _SelectPEnd{ -1,-1 };
 
 	QFont _Format;
 

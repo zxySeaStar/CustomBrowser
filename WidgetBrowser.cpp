@@ -4,6 +4,7 @@
 #include <QPainter>
 #include <QGuiApplication>
 #include <QClipboard>
+#include <iostream>
 WidgetBrowser::WidgetBrowser(QWidget* parent)
 	:QWidget(parent),
 	_WidgetPort(new WidgetChoosePort(this)),
@@ -148,6 +149,7 @@ void WidgetChoosePort::TryConnect(bool flags)
 /*
 class WidgetViewer
 */
+#include <pugixml/pugixml.hpp>
 WidgetViewer::WidgetViewer(QWidget* parent)
 	:QAbstractScrollArea(parent)
 {
@@ -162,6 +164,8 @@ WidgetViewer::WidgetViewer(QWidget* parent)
 	_CharW = fm.boundingRect("9").width();
 
 	AppendData("1");
+	AppendData("<font color=\"red\">hello world!</font>");
+	AppendData("<font color=\"green\">hello world!</font>");
 	AppendData("12");
 	AppendData("134");
 	AppendData("12345");
@@ -169,29 +173,77 @@ WidgetViewer::WidgetViewer(QWidget* parent)
 	AppendData("124234");
 	AppendData("1234");
 	AppendData("123");
+	AppendData("<font color=\"red\">hello world!</font>");
+	AppendData("<font color=\"green\">hello world!</font>");
+	AppendData("<processBar>60</processBar>");
+
 }
 
 void WidgetViewer::AppendData(QString _text)
 {
-	//setUpdatesEnabled(false);
-
+#if DRAW_RICH_CONTENT
 	// parse the text
 	// current format
 	// 1.  
 	// 2.
-
+	// parse the data and push to the contentRichList
+	pugi::xml_document doc;
+	std::string content = _text.toUtf8();
+	pugi::xml_parse_result result = doc.load_buffer((char*)content.data(), content.size());
+	if (result)
+	{
+		auto rootNode = std::make_shared<ViewLineString>();
+		std::shared_ptr <ViewLineNode> curNode = rootNode;
+		for (auto it = doc.begin(); it != doc.end(); ++it)
+		{
+			pugi::xpath_node node = *it;
+			std::cout << "name " << node.node().attribute("color").value() << node.node().name() << node.node().child_value() << std::endl;
+			std::string name = node.node().name();
+			if (name == "font")
+			{
+				//std::string color = node.node().attribute("color").value();
+				auto strNode = std::make_shared<ViewLineString>();
+				strNode->SetColor(node.node().attribute("color").value());
+				strNode->SetText(node.node().child_value());
+				curNode->nextNode = strNode;
+				curNode = std::move(strNode);
+			}
+			else if (name == "processBar")
+			{
+				auto strNode = std::make_shared<ViewLineProcessBar>();
+				strNode->SetProcess(QString(node.node().child_value()).toInt());
+				curNode->nextNode = strNode;
+				curNode = std::move(strNode);
+			}
+			break;
+		}
+		if (rootNode->nextNode)
+		{
+			_ContentRichList.append(rootNode->nextNode);
+		}
+	}
+	else
+	{
+		auto rootNode = std::make_shared<ViewLineString>();
+		rootNode->SetText(_text);
+		_ContentRichList.append(rootNode);
+	}
+#else
 	_ContentList.append(_text);
+#endif
 	adjust();
-	////verticalScrollBar()->setRange(0, _CharH * (LineCount() + 1) - viewport()->size().height() + 6);
-	//verticalScrollBar()->setRange(0, _ContentList.size()-((viewport()->height() - _ColPrefix) / _CharH));
-	//verticalScrollBar()->setValue(verticalScrollBar()->maximum());
-	//setUpdatesEnabled(true);
-	//this->viewport()->update();
+	// scroll to buttom
+	verticalScrollBar()->setValue(verticalScrollBar()->maximum());
 }
 
 void WidgetViewer::Clear()
 {
+#if DRAW_RICH_CONTENT
+	_ContentRichList.clear();
+#else
 	_ContentList.clear();
+#endif
+	
 	//this->viewport()->update();
 	adjust();
 }
@@ -206,36 +258,89 @@ QString WidgetViewer::Copy()
 	// get the selected text
 	auto f_min = [](int a, int b)->int {return  a > b ? b : a; };
 	auto f_max = [](int a, int b)->int {return  a < b ? b : a; };
+#if DRAW_RICH_CONTENT
+	QString result;
+	if (_ContentRichList.size() == 0)
+	{
+		return QString();
+	}
+	QFontMetrics fm(_Format, viewport());
+	for (int absl = _SelectPBegin.y(); absl <= _SelectPEnd.y() && absl >= 0 && absl < _ContentRichList.size(); absl++)
+	{
+		if (_ContentRichList.at(absl)->GetType() != ViewLineNode::NodeType::String)
+		{
+			continue;
+		}
 
+		auto lineItem = std::dynamic_pointer_cast<ViewLineString>(_ContentRichList.at(absl));
+		//int textLineWidth = fm.boundingRect(lineItem->GetText()).width();
+
+
+		if (absl > _SelectPBegin.y() && absl < _SelectPEnd.y())
+		{
+			result.append(lineItem->GetText());
+		}
+		else
+		{
+			int textLineWidth = fm.boundingRect(lineItem->GetText()).width();
+			int lpos = 0;
+			int rpos = textLineWidth;
+			if (absl == _SelectPBegin.y())
+			{
+				lpos = f_min((_SelectPBegin.x()) * _CharW, textLineWidth);
+			}
+			if (absl == _SelectPEnd.y())
+			{
+				rpos = f_min((_SelectPEnd.x()) * _CharW, textLineWidth);
+			}
+			// for the first line andd last line, handle char one by one
+			// tranverse the line, find the hightlight left pos, and right pos
+			//for (auto& item : _ContentList.at(absl))
+			//{
+			//	int charWidth = fm.boundingRect(item).width();	
+			//}
+			if (lpos >= textLineWidth)
+			{
+				continue;
+			}
+			int hlIndex = 0;
+			int hrIndex = lineItem->GetText().size() - 1;
+			for (int i = 0; i < lineItem->GetText().size(); i++)
+			{
+				int charWidth = fm.boundingRect(lineItem->GetText().mid(i)).width();
+				if (textLineWidth - charWidth > lpos)
+				{
+					break;
+				}
+				hlIndex = i;
+			}
+			for (int i = lineItem->GetText().size(); i > 0; i--)
+			{
+				int charWidth = fm.boundingRect(lineItem->GetText().mid(0, i)).width();
+				if (charWidth < rpos)
+				{
+					break;
+				}
+				hrIndex = i;
+			}
+			result.append(lineItem->GetText().mid(hlIndex, hrIndex - hlIndex));
+		}
+		if (absl != _SelectPEnd.y()) {
+			result.append("\n");
+		}
+	}
+	if (result.size() > 0)
+	{
+		clipboard->setText(result);
+	}
+#else
 	QString result;
 	if (_ContentList.size() == 0)
 	{
 		return QString();
-	}
-	//// for the first line
-	//if (_SelectPBegin.y() != _SelectPEnd.y())
-	//{
-	//	// line
-	//	for (int l = _SelectPBegin.y() ; l < _SelectPEnd.y() && l < _ContentList.size(); l++)
-	//	{
-	//		result.append(_ContentList.at(l));
-	//	}
-
-	//	// last line
-	//	if (_SelectPEnd.y() < _ContentList.size())
-	//	{
-	//		result.append(_ContentList.at(_SelectPEnd.y()).mid(0,_SelectPEnd.x()));
-	//	}
-	//}
-	//else
-	//{
-	//	if (_SelectPEnd.y() < _ContentList.size())
-	//	{
-	//		result.append(_ContentList.at(_SelectPEnd.y()).mid(_SelectPBegin.x(), _SelectPEnd.x()- _SelectPBegin.x()));
-	//	}
-	//}
+}
 	QFontMetrics fm(_Format, viewport());
-	for (int absl = _SelectPBegin.y(); absl <= _SelectPEnd.y() && absl < _ContentList.size(); absl++)
+	for (int absl = _SelectPBegin.y(); absl <= _SelectPEnd.y() && absl >= 0 && absl < _ContentList.size(); absl++)
 	{
 		if (absl > _SelectPBegin.y() && absl < _SelectPEnd.y())
 		{
@@ -260,8 +365,12 @@ QString WidgetViewer::Copy()
 			//{
 			//	int charWidth = fm.boundingRect(item).width();	
 			//}
+			if (lpos >= textLineWidth)
+			{
+				continue;
+			}
 			int hlIndex = 0;
-			int hrIndex = _ContentList.at(absl).size()-1;
+			int hrIndex = _ContentList.at(absl).size() - 1;
 			for (int i = 0; i < _ContentList.at(absl).size(); i++)
 			{
 				int charWidth = fm.boundingRect(_ContentList.at(absl).mid(i)).width();
@@ -280,24 +389,26 @@ QString WidgetViewer::Copy()
 				}
 				hrIndex = i;
 			}
-			result.append(_ContentList.at(absl).mid(hlIndex, hrIndex-hlIndex));
+			result.append(_ContentList.at(absl).mid(hlIndex, hrIndex - hlIndex));
 		}
-		result.append("\n");
+		if (absl != _SelectPEnd.y()) {
+			result.append("\n");
+		}
+	}
+	if (result.size() > 0)
+	{
+		clipboard->setText(result);
 	}
 
-	clipboard->setText(result);
+
+#endif
+	
 	return QString();
 }
 
 void WidgetViewer::resizeEvent(QResizeEvent* event)
 {
 	Q_UNUSED(event)
-	//verticalScrollBar()->setPageStep(_CharH * 10);
-	//verticalScrollBar()->setPageStep(((viewport()->height() - _ColPrefix) / _CharH));
-	//verticalScrollBar()->setSingleStep(_CharH);
-	//verticalScrollBar()->setRange(0, _ContentList.size() - ((viewport()->height() - _ColPrefix) / _CharH));
-
-	//verticalScrollBar()->setRange(0, _CharH * (LineCount() + 1) - viewport()->size().height() + _ColPrefix);
 	adjust();
 }
 
@@ -307,10 +418,6 @@ void WidgetViewer::mousePressEvent(QMouseEvent* _event)
 	// record cur postion and last position
 	if (_event->button() == Qt::LeftButton)
 	{
-		//auto pos = _event->pos() + QPoint(0,verticalScrollBar()->value());
-		//_LastCursorPos = pos;
-		//_CurCursorPos = pos;
-		//this->viewport()->update();
 		auto pos = CursorPosition(_event->pos());
 		ResetSelection(pos);
 		SetSelection(pos);
@@ -321,24 +428,12 @@ void WidgetViewer::mousePressEvent(QMouseEvent* _event)
 void WidgetViewer::mouseReleaseEvent(QMouseEvent* _event)
 {
 	_Pressed = false;
-	// update last 
-	if (_event->button() == Qt::LeftButton)
-	{
-		//auto pos = _event->pos() + QPoint(0, verticalScrollBar()->value());
-		//_CurCursorPos = pos;
-		//this->viewport()->update();
-		//CursorPosition(_event->pos());
-		//this->viewport()->update();
-	}
 }
 
 void WidgetViewer::mouseMoveEvent(QMouseEvent* _event)
 {
 	if (_Pressed)
 	{
-		//auto pos = _event->pos() + QPoint(0, verticalScrollBar()->value());
-		//_CurCursorPos = pos;
-		//this->viewport()->update();
 		auto pos = CursorPosition(_event->pos());
 		if (pos.x() >= 0 && pos.y() >= 0)
 		{
@@ -348,10 +443,31 @@ void WidgetViewer::mouseMoveEvent(QMouseEvent* _event)
 	}
 }
 
+void WidgetViewer::PaintString(std::shared_ptr<ViewLineString> _node, QPoint _pos, QPainter* _painter)
+{
+
+}
+
 void WidgetViewer::adjust() {
 	// adjust the scrollbar value
 	// total number of line show
-	_RowShowNum = (viewport()->height() - _RowPrefix )/ _CharH ;
+#if DRAW_RICH_CONTENT
+	_RowShowNum = (viewport()->height() - _RowPrefix) / _CharH;
+	int lineCount = _ContentRichList.size();
+	verticalScrollBar()->setRange(0, lineCount - _RowShowNum);
+	verticalScrollBar()->setPageStep(_RowShowNum);
+
+	// adjust the first line show
+	int value = verticalScrollBar()->value();
+	_RowShowFirst = value;
+	// current number of line show
+	_DataShow = (lineCount - _RowShowFirst);
+	if (_DataShow > _RowShowNum)
+	{
+		_DataShow = _RowShowNum;
+	}
+#else
+	_RowShowNum = (viewport()->height() - _RowPrefix) / _CharH;
 	int lineCount = _ContentList.size();
 	verticalScrollBar()->setRange(0, lineCount - _RowShowNum);
 	verticalScrollBar()->setPageStep(_RowShowNum);
@@ -360,11 +476,14 @@ void WidgetViewer::adjust() {
 	int value = verticalScrollBar()->value();
 	_RowShowFirst = value;
 	// current number of line show
-	_DataShow = (_ContentList.size() - _RowShowFirst);
+	_DataShow = (lineCount - _RowShowFirst);
 	if (_DataShow > _RowShowNum)
 	{
 		_DataShow = _RowShowNum;
 	}
+
+#endif
+
 
 	// update the viewport()
 	viewport()->update();
@@ -430,16 +549,94 @@ void WidgetViewer::paintEvent(QPaintEvent* paintEvent)
 	auto f_max = [](int a, int b)->int {return  a < b ? b : a; };
 	QPoint pos(_ColPrefix, _RowPrefix);
 	QFontMetrics fm(_Format, p.device());
+
+
+
 	for (int l = 0; l < _DataShow; l++)
 	{
-
 		// absl
 		int absl = _RowShowFirst + l;
-		//int textLineWidth = _ContentList.at(_RowShowFirst + l).size() * _CharW;
 
-		int textLineWidth =  fm.boundingRect(_ContentList.at(absl)).width();
+#if DRAW_RICH_CONTENT
 
+		auto lineItem = _ContentRichList.at(absl);
+		if (lineItem->GetType() == ViewLineNode::NodeType::String)
+		{
+			int textLineWidth = fm.boundingRect(lineItem->GetText()).width();
+			// draw hightlight
+			if (absl >= _SelectPBegin.y() && absl <= _SelectPEnd.y())
+			{
+				if (absl > _SelectPBegin.y() && absl < _SelectPEnd.y())
+				{
+					p.fillRect(QRect(pos, QSize(textLineWidth, _CharH)).normalized(), hightLightColor);
+				}
+				else
+				{
+					int lpos = 0;
+					int rpos = textLineWidth;
+					if (absl == _SelectPBegin.y())
+					{
+						lpos = f_min((_SelectPBegin.x()) * _CharW, textLineWidth);
+					}
+					if (absl == _SelectPEnd.y())
+					{
+						rpos = f_min((_SelectPEnd.x()) * _CharW, textLineWidth);
+					}
+					// for the first line andd last line, handle char one by one
+					// tranverse the line, find the hightlight left pos, and right pos
+					//for (auto& item : _ContentList.at(absl))
+					//{
+					//	int charWidth = fm.boundingRect(item).width();	
+					//}
 
+					if (lpos < textLineWidth)
+					{
+						int hlpos = 0;
+						int hrpos = textLineWidth;
+						for (int i = 0; i < lineItem->GetText().size(); i++)
+						{
+							int charWidth = fm.boundingRect(lineItem->GetText().mid(i)).width();
+							if (textLineWidth - charWidth > lpos)
+							{
+								break;
+							}
+							hlpos = textLineWidth - charWidth;
+						}
+						for (int i = lineItem->GetText().size(); i > 0; i--)
+						{
+							int charWidth = fm.boundingRect(lineItem->GetText().mid(0, i)).width();
+							if (charWidth < rpos)
+							{
+								break;
+							}
+							hrpos = charWidth;
+						}
+						p.fillRect(QRect(pos + QPoint(hlpos, 0), QSize(hrpos - hlpos, _CharH)).normalized(), hightLightColor);
+					}
+
+				}
+			}
+		}
+		
+		pos += QPoint(0, _CharH);
+		// draw content
+		lineItem->Paint(&p, pos);
+
+		//if (_ContentRichList.at(absl)->GetType() == ViewLineNode::NodeType::String)
+		//{
+		//	if (lineItem->GetColor().size() > 0)
+		//	{
+		//		p.setPen(QColor(lineItem->GetColor()));
+		//	}
+		//	else
+		//	{
+		//		p.setPen(formatColor);
+		//	}
+		//	p.drawText(pos, lineItem->GetText());
+		//}
+
+#else
+		int textLineWidth = fm.boundingRect(_ContentList.at(absl)).width();
 		if (absl >= _SelectPBegin.y() && absl <= _SelectPEnd.y())
 		{
 			if (absl > _SelectPBegin.y() && absl < _SelectPEnd.y())
@@ -450,11 +647,11 @@ void WidgetViewer::paintEvent(QPaintEvent* paintEvent)
 			{
 				int lpos = 0;
 				int rpos = textLineWidth;
-				if(absl == _SelectPBegin.y())
+				if (absl == _SelectPBegin.y())
 				{
 					lpos = f_min((_SelectPBegin.x()) * _CharW, textLineWidth);
 				}
-				if(absl == _SelectPEnd.y())
+				if (absl == _SelectPEnd.y())
 				{
 					rpos = f_min((_SelectPEnd.x()) * _CharW, textLineWidth);
 				}
@@ -464,179 +661,73 @@ void WidgetViewer::paintEvent(QPaintEvent* paintEvent)
 				//{
 				//	int charWidth = fm.boundingRect(item).width();	
 				//}
-				int hlpos = 0;
-				int hrpos = textLineWidth;
-				for (int i = 0; i < _ContentList.at(absl).size(); i++)
+
+				if (lpos < textLineWidth)
 				{
-					int charWidth = fm.boundingRect(_ContentList.at(absl).mid(i)).width();
-					if (textLineWidth - charWidth > lpos)
+					int hlpos = 0;
+					int hrpos = textLineWidth;
+					for (int i = 0; i < _ContentList.at(absl).size(); i++)
 					{
-						break;
+						int charWidth = fm.boundingRect(_ContentList.at(absl).mid(i)).width();
+						if (textLineWidth - charWidth > lpos)
+						{
+							break;
+						}
+						hlpos = textLineWidth - charWidth;
 					}
-					hlpos = textLineWidth - charWidth;
-				}
-				for (int i = _ContentList.at(absl).size(); i > 0; i--)
-				{
-					int charWidth = fm.boundingRect(_ContentList.at(absl).mid(0,i)).width();
-					if (charWidth < rpos)
+					for (int i = _ContentList.at(absl).size(); i > 0; i--)
 					{
-						break;
+						int charWidth = fm.boundingRect(_ContentList.at(absl).mid(0, i)).width();
+						if (charWidth < rpos)
+						{
+							break;
+						}
+						hrpos = charWidth;
 					}
-					hrpos = charWidth;
+					p.fillRect(QRect(pos + QPoint(hlpos, 0), QSize(hrpos - hlpos, _CharH)).normalized(), hightLightColor);
 				}
-				p.fillRect(QRect(pos+QPoint(hlpos,0), QSize(hrpos-hlpos, _CharH)).normalized(), hightLightColor);
+
 			}
-			/*else if (absl == _SelectPBegin.y() && absl == _SelectPEnd.y())
-			{
-				int width = (_SelectPEnd.x() - _SelectPBegin.x()) * _CharW;
-				if (_SelectPBegin.x() * _CharW > textLineWidth)
-				{
-					width = 0;
-				}
-				if (_SelectPEnd.x() * _CharW > textLineWidth)
-				{
-					width = textLineWidth - _SelectPBegin.x() * _CharW;
-				}
-				p.fillRect(QRect(pos + QPoint(_SelectPBegin.x() * _CharW, 0), QSize(width, _CharH)).normalized(), hightLightColor);
-			}
-			else if (absl == _SelectPBegin.y())
-			{
-				int width = textLineWidth -(_SelectPBegin.x()) * _CharW;
-				if (_SelectPBegin.x() * _CharW > textLineWidth)
-				{
-					width = 0;
-				}
-				
-				p.fillRect(QRect(pos+ QPoint(_SelectPBegin.x()*_CharW,0), QSize(width, _CharH)).normalized(), hightLightColor);
-			}
-			else
-			{
-				int width = f_min((_SelectPEnd.x()) * _CharW,textLineWidth);
-				p.fillRect(QRect(pos, QSize(width, _CharH)).normalized(), hightLightColor);
-			}*/
 		}
 		pos += QPoint(0, _CharH);
-		p.drawText(pos,_ContentList.at(absl));
+		p.drawText(pos, _ContentList.at(absl));
+#endif
 	}
 
+	
 }
 
+/*
+class ViewLineString
+*/
+void ViewLineString::Paint(QPainter* _painter, QPoint pos)
+{
+	if (GetColor().size() > 0)
+	{
+		_painter->setPen(QColor(GetColor()));
+	}
+	else
+	{
+		_painter->setPen(QColor(0,0,0));
+	}
+	_painter->drawText(pos, GetText());
+}
 
-//void WidgetViewer::paintEvent(QPaintEvent* paintEvent)
-//{
-//	QPainter p(viewport());
-//	p.setPen(QColor(187, 187, 187));
-//	p.setBrush(QColor(0x23, 0x26, 0x29));
-//	//p.setFont(_format.font());
-//
-//	//p.fillRect(viewport()->rect(), QColor(0x23, 0x26, 0x29));
-//	p.fillRect(viewport()->rect(), QColor(0x255, 0x255, 0x255));
-//
-//	QPoint pos;
-//	QColor formatColor = QColor(0, 0, 0);
-//	QColor hightLightColor("yellow");
-//	pos.setY(_ColPrefix);
-//
-//	int firstLine = verticalScrollBar()->value();
-//	int lastLine = (viewport()->height() - _ColPrefix) / _CharH + firstLine;
-//
-//	auto f_min = [](int a, int b)->int {return  a > b ? b : a; };
-//	auto f_max = [](int a, int b)->int {return  a < b ? b : a; };
-//	QPoint curP = _CurCursorPos;
-//	QPoint lastP = _LastCursorPos;
-//	curP = curP - QPoint(_RowPrefix,_ColPrefix);
-//	lastP = lastP - QPoint(_RowPrefix,_ColPrefix);
-//
-//	int firstHightLine = f_min(curP.y() / _CharH, lastP.y() / _CharH);
-//	int lastHightLine = f_max(curP.y() / _CharH, lastP.y() / _CharH);
-//	int firstHightCol = curP.y() > lastP.y() ? lastP.x() / _CharW : curP.x() / _CharW;
-//	int lastHightCol = curP.y() > lastP.y() ? curP.x() / _CharW : lastP.x() / _CharW;
-//	if (firstHightLine == lastHightLine && firstHightCol > lastHightCol)
-//	{
-//		int temp = firstHightCol;
-//		firstHightCol = lastHightCol;
-//		lastHightCol = temp;
-//	}
-//
-//	if (lastLine > LineCount())
-//	{
-//		lastLine = LineCount();
-//	}
-//
-//	QFont font1("monoSpace");
-//	font1.setPixelSize(_CharH);
-//	font1.setLetterSpacing(QFont::AbsoluteSpacing, 0);
-//	p.setFont(font1);
-//	p.setPen(formatColor);
-//	for (int l = firstLine; l < lastLine; l++)
-//	{
-//		pos.setX(_RowPrefix);
-//
-//		int textLineWidth = 0;
-//		for (auto& item : _ContentList.at(l))
-//		{
-//			textLineWidth += (IsWideChar(item)? _CharW*2:_CharW);
-//		}
-//
-//		// draw highlight for each line
-//		//if (l > firstHightLine && l < lastHightLine)
-//		//{
-//		//	p.fillRect(QRect(pos, QSize(textLineWidth, _CharH)).normalized(), hightLightColor);
-//		//}
-//		//else if (l == firstHightLine && l == lastHightLine)
-//		//{
-//		//	p.fillRect(QRect(pos + QPoint(firstHightCol * _CharW, 0), QSize(f_min(lastHightCol*_CharW, f_max(textLineWidth - _CharW * firstHightCol, 0)), _CharH)).normalized(), hightLightColor);
-//		//	printf("??\n");
-//		//}
-//		//else if (l == firstHightLine)
-//		//{
-//		//	p.fillRect(QRect(pos+ QPoint(firstHightCol * _CharW,0), QSize(f_max(textLineWidth - _CharW* firstHightCol,0) , _CharH)).normalized(), hightLightColor);
-//		//	printf("!!\n");
-//		//}
-//		//else if (l == lastHightLine)
-//		//{
-//		//	p.fillRect(QRect(pos, QSize( f_min(lastHightCol * _CharW, textLineWidth), _CharH)).normalized(), hightLightColor);
-//		//}
-//		if (l >= firstHightLine && l <= lastHightLine)
-//		{
-//			int leftX = 0;
-//			int rightX = textLineWidth;
-//			if (l == firstHightLine)
-//			{
-//				leftX =  f_min(firstHightCol * _CharW,rightX);
-//			}
-//			if (l == lastHightLine)
-//			{
-//				rightX = f_min(lastHightCol * _CharW,rightX);
-//			}
-//			//printf("%d,%d\n",leftX, rightX);
-//			p.fillRect(QRect(pos + QPoint(leftX, 0), QSize(rightX - leftX, _CharH)).normalized(), hightLightColor);
-//		}
-//
-//		pos.setY(pos.y() + _CharH);
-//
-//		// draw text
-//		//QRectF rect(pos, QPoint(textLineWidth, _CharH));
-//		p.drawText(pos, _ContentList.at(l));
-//
-//		// draw text
-//		//for (int c = 0; c < _ContentList.at(l).size(); c++)
-//		//{
-//		//	const QChar& vtChar = _ContentList.at(l)[c];
-//		//	//p.setPen(vtChar.format().foreground());
-//		//	p.setPen(formatColor);
-//
-//		//	// draw highlight for each node
-//		//	if (IsWideChar(vtChar))
-//		//	{
-//		//		p.drawText(QRect(pos, QSize(_CharW*2, _CharH + 1)).normalized(), Qt::AlignLeft, QString(vtChar));
-//		//		pos.setX(pos.x() + _CharW*2);
-//		//	}
-//		//	else
-//		//	{
-//		//		p.drawText(QRect(pos, QSize(_CharW, _CharH)).normalized(), Qt::AlignCenter, QString(vtChar));
-//		//		pos.setX(pos.x() + _CharW);
-//		//	}
-//		//}
-//	}
-//}
+/*
+class ViewLineProcessBar
+*/
+void ViewLineProcessBar::Paint(QPainter* _painter, QPoint pos)
+{
+	if (_ProcessNum > 100)
+	{
+		_ProcessNum = 100;
+	}
+	else if (_ProcessNum < 0)
+	{
+		_ProcessNum = 0;
+	}
+	
+	_painter->fillRect(QRect(pos + QPoint(0, -2), QSize(100, -9 * 2)).normalized(), QColor("black"));
+	_painter->fillRect(QRect(pos+QPoint(2,-4), QSize(_ProcessNum, -5 * 2)).normalized(), QColor("white"));
+
+}
