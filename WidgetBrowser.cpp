@@ -5,6 +5,7 @@
 #include <QGuiApplication>
 #include <QClipboard>
 #include <iostream>
+#include <QTimer>
 WidgetBrowser::WidgetBrowser(QWidget* parent)
 	:QWidget(parent),
 	_WidgetPort(new WidgetChoosePort(this)),
@@ -32,6 +33,18 @@ WidgetBrowser::WidgetBrowser(QWidget* parent)
 		vLayout->addLayout(hLayout);
 		hLayout->addLayout(vvLayout);
 	}
+
+    QTimer* timer = new QTimer(this);
+    connect(timer,&QTimer::timeout,this,[this,timer](){
+        static int processNum = 0;
+        _WidgetViewer->AppendData("\r<processBar>" +QString::number(processNum++) +"</processBar>");
+        processNum+=3;
+        if(processNum>100)
+        {
+            timer->stop();
+        }
+    });
+    timer->start(250);
 	InitUI();
 }
 
@@ -181,14 +194,22 @@ WidgetViewer::WidgetViewer(QWidget* parent)
 
 void WidgetViewer::AppendData(QString _text)
 {
+
 #if DRAW_RICH_CONTENT
+    if(_text.startsWith("\r") && !_text.startsWith("\r\n"))
+    {
+        if(_ContentRichList.size()>0)
+        {
+            _ContentRichList.pop_back();
+        }
+    }
 	// parse the text
 	// current format
 	// 1.  
 	// 2.
 	// parse the data and push to the contentRichList
 	pugi::xml_document doc;
-	std::string content = _text.toUtf8();
+    std::string content = _text.toUtf8().toStdString();
 	pugi::xml_parse_result result = doc.load_buffer((char*)content.data(), content.size());
 	if (result)
 	{
@@ -560,63 +581,62 @@ void WidgetViewer::paintEvent(QPaintEvent* paintEvent)
 #if DRAW_RICH_CONTENT
 
 		auto lineItem = _ContentRichList.at(absl);
-		if (lineItem->GetType() == ViewLineNode::NodeType::String)
-		{
-			int textLineWidth = fm.boundingRect(lineItem->GetText()).width();
-			// draw hightlight
-			if (absl >= _SelectPBegin.y() && absl <= _SelectPEnd.y())
-			{
-				if (absl > _SelectPBegin.y() && absl < _SelectPEnd.y())
-				{
-					p.fillRect(QRect(pos, QSize(textLineWidth, _CharH)).normalized(), hightLightColor);
-				}
-				else
-				{
-					int lpos = 0;
-					int rpos = textLineWidth;
-					if (absl == _SelectPBegin.y())
-					{
-						lpos = f_min((_SelectPBegin.x()) * _CharW, textLineWidth);
-					}
-					if (absl == _SelectPEnd.y())
-					{
-						rpos = f_min((_SelectPEnd.x()) * _CharW, textLineWidth);
-					}
-					// for the first line andd last line, handle char one by one
-					// tranverse the line, find the hightlight left pos, and right pos
-					//for (auto& item : _ContentList.at(absl))
-					//{
-					//	int charWidth = fm.boundingRect(item).width();	
-					//}
 
-					if (lpos < textLineWidth)
-					{
-						int hlpos = 0;
-						int hrpos = textLineWidth;
-						for (int i = 0; i < lineItem->GetText().size(); i++)
-						{
-							int charWidth = fm.boundingRect(lineItem->GetText().mid(i)).width();
-							if (textLineWidth - charWidth > lpos)
-							{
-								break;
-							}
-							hlpos = textLineWidth - charWidth;
-						}
-						for (int i = lineItem->GetText().size(); i > 0; i--)
-						{
-							int charWidth = fm.boundingRect(lineItem->GetText().mid(0, i)).width();
-							if (charWidth < rpos)
-							{
-								break;
-							}
-							hrpos = charWidth;
-						}
-						p.fillRect(QRect(pos + QPoint(hlpos, 0), QSize(hrpos - hlpos, _CharH)).normalized(), hightLightColor);
-					}
+        int textLineWidth = fm.boundingRect(lineItem->GetText()).width();
+        // draw hightlight
+        if (absl >= _SelectPBegin.y() && absl <= _SelectPEnd.y())
+        {
+            if (absl > _SelectPBegin.y() && absl < _SelectPEnd.y())
+            {
+                p.fillRect(QRect(pos, QSize(textLineWidth, _CharH)).normalized(), hightLightColor);
+            }
+            else
+            {
+                int lpos = 0;
+                int rpos = textLineWidth;
+                if (absl == _SelectPBegin.y())
+                {
+                    lpos = f_min((_SelectPBegin.x()) * _CharW, textLineWidth);
+                }
+                if (absl == _SelectPEnd.y())
+                {
+                    rpos = f_min((_SelectPEnd.x()) * _CharW, textLineWidth);
+                }
+                // for the first line andd last line, handle char one by one
+                // tranverse the line, find the hightlight left pos, and right pos
+                //for (auto& item : _ContentList.at(absl))
+                //{
+                //	int charWidth = fm.boundingRect(item).width();
+                //}
 
-				}
-			}
-		}
+                if (lpos < textLineWidth)
+                {
+                    int hlpos = 0;
+                    int hrpos = textLineWidth;
+                    for (int i = 0; i < lineItem->GetText().size(); i++)
+                    {
+                        int charWidth = fm.boundingRect(lineItem->GetText().mid(i)).width();
+                        if (textLineWidth - charWidth > lpos)
+                        {
+                            break;
+                        }
+                        hlpos = textLineWidth - charWidth;
+                    }
+                    for (int i = lineItem->GetText().size(); i > 0; i--)
+                    {
+                        int charWidth = fm.boundingRect(lineItem->GetText().mid(0, i)).width();
+                        if (charWidth < rpos)
+                        {
+                            break;
+                        }
+                        hrpos = charWidth;
+                    }
+                    p.fillRect(QRect(pos + QPoint(hlpos, 0), QSize(hrpos - hlpos, _CharH)).normalized(), hightLightColor);
+                }
+
+            }
+        }
+
 		
 		pos += QPoint(0, _CharH);
 		// draw content
@@ -727,7 +747,18 @@ void ViewLineProcessBar::Paint(QPainter* _painter, QPoint pos)
 		_ProcessNum = 0;
 	}
 	
-	_painter->fillRect(QRect(pos + QPoint(0, -2), QSize(100, -9 * 2)).normalized(), QColor("black"));
-	_painter->fillRect(QRect(pos+QPoint(2,-4), QSize(_ProcessNum, -5 * 2)).normalized(), QColor("white"));
+    QColor backColor(Qt::white);
+    QColor borderCoolor(QColor(0xFF,0xFF,0xFF).rgb() - backColor.rgb());
+    qreal mid_y = pos.y() -(12*2)/2;
+    qreal radius = 8;
+    qreal processBarWidth = 400;
+    _painter->setRenderHint(QPainter::Antialiasing);
+    _painter->setPen(borderCoolor);
+    _painter->setBrush(backColor);
+    _painter->drawRoundedRect(QRect(QPoint(pos.x(), mid_y-radius), QSize(processBarWidth +radius, radius*2)),radius/2,radius/2);
+    _painter->setBrush(borderCoolor);
+    _painter->drawRoundedRect(QRect(QPoint(pos.x()+radius/2, mid_y-radius/2), QSize(processBarWidth*_ProcessNum/100, radius*2/2)),radius/3,radius/3);
+    _painter->setPen(borderCoolor);
+    _painter->drawText(QPoint(pos.x()+processBarWidth+ 2*radius,mid_y+radius),QString::number(_ProcessNum)+"%");
 
 }

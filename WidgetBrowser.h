@@ -8,6 +8,7 @@
 #include <QMouseEvent>
 #include <QPoint>
 #include <QString>
+#include <memory>
 class WidgetChoosePort;
 class WidgetViewer;
 class WidgetBrowser :public QWidget {
@@ -67,11 +68,12 @@ public:
 	virtual NodeType GetType() = 0;
 	virtual QString& GetText()
 	{
-		return QString();
+        return _Text;
 	}
 	virtual void Paint(QPainter* _painter,QPoint pos) = 0;
 	//virtual QRect GetRect(QRect _rect) = 0; // interact with the cursor, get hightlight rect
 	std::shared_ptr<ViewLineNode> nextNode;
+    QString _Text;
 };
 
 class ViewLineString : public ViewLineNode
@@ -114,7 +116,7 @@ private:
 	int _Offset = 0;
 	NodeType _Type{ NodeType::String};
 	QString _Color;
-	QString _Text;
+
 };
 
 class ViewLineProcessBar : public ViewLineNode
