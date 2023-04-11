@@ -165,6 +165,7 @@ private:
 	virtual void mousePressEvent(QMouseEvent* _event) override;
 	virtual void mouseReleaseEvent(QMouseEvent* _event) override;
 	virtual void mouseMoveEvent(QMouseEvent* _event) override;
+	virtual void keyPressEvent(QKeyEvent* _event) override;
 
 	bool IsWideChar(QChar _char)
 	{
@@ -181,7 +182,7 @@ private:
 #endif
 	}
 
-	int _CharH = 12*2;
+	int _CharH = 14;
 	int _CharW = 12;
 #if DRAW_RICH_CONTENT
 	QList<std::shared_ptr<ViewLineNode>> _ContentRichList;
@@ -195,9 +196,10 @@ private:
 	bool	_Pressed = { false };
 
 
-	int _RowPrefix = 6;
-	int _ColPrefix = 6;
-
+	int _RowPrefix = 10;
+	int _RowSpace = 0;
+	int _ColPrefix = 10;
+	int _ColSpace = 2;
 
 	// first show line
 	int _RowShowFirst{ 0 }; // #line for whole page
