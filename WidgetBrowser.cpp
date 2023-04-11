@@ -7,7 +7,6 @@
 #include <iostream>
 #include <QTimer>
 #include <QScrollBar>
-#include "../ZStyleSheet.h"
 WidgetBrowser::WidgetBrowser(QWidget* parent)
 	:QWidget(parent),
 	_WidgetPort(new WidgetChoosePort(this)),
@@ -163,7 +162,16 @@ void WidgetChoosePort::TryConnect(bool flags)
 /*
 class WidgetViewer
 */
+#define USE_XmlNaiveParser 1
+
+#ifdef USE_XmlNaiveParser
+#include "XmlNaiveParser.h"
+#else
 #include <pugixml/pugixml.hpp>
+#endif
+//#include "../ZStyleSheet.h"
+
+
 WidgetViewer::WidgetViewer(QWidget* parent)
 	:QAbstractScrollArea(parent)
 {
@@ -178,7 +186,7 @@ WidgetViewer::WidgetViewer(QWidget* parent)
 	_CharW = fm.boundingRect("9").width();
 	//setStyleSheet("");
 	this->setStyleSheet("background-color:rgba(51,51,51,1);");
-	this->verticalScrollBar()->setStyleSheet(ZStyleSheet_ScollBar3);
+    //this->verticalScrollBar()->setStyleSheet(ZStyleSheet_ScollBar3);
 
 	AppendData("1");
     AppendData("<font>nihao world!</font><font color=\"red\">hello world!</font>");
@@ -213,46 +221,91 @@ void WidgetViewer::AppendData(QString _text)
 	// 1.  
 	// 2.
 	// parse the data and push to the contentRichList
-	pugi::xml_document doc;
+
+#ifdef USE_XmlNaiveParser
+    XmlNaiveParser parser;
     std::string content = _text.toUtf8().toStdString();
-	pugi::xml_parse_result result = doc.load_buffer((char*)content.data(), content.size());
-	if (result)
-	{
-		auto rootNode = std::make_shared<ViewLineString>();
-		std::shared_ptr <ViewLineNode> curNode = rootNode;
-		for (auto it = doc.begin(); it != doc.end(); ++it)
-		{
-			pugi::xpath_node node = *it;
-			std::cout << "name " << node.node().attribute("color").value() << node.node().name() << node.node().child_value() << std::endl;
-			std::string name = node.node().name();
-			if (name == "font")
-			{
-				//std::string color = node.node().attribute("color").value();
-				auto strNode = std::make_shared<ViewLineString>();
-				strNode->SetColor(node.node().attribute("color").value());
-				strNode->SetText(node.node().child_value());
-				curNode->nextNode = strNode;
-				curNode = std::move(strNode);
-			}
-			else if (name == "processBar")
-			{
-				auto strNode = std::make_shared<ViewLineProcessBar>();
-				strNode->SetProcess(QString(node.node().child_value()).toInt());
-				curNode->nextNode = strNode;
-				curNode = std::move(strNode);
-			}
-		}
-		if (rootNode->nextNode)
-		{
-			_ContentRichList.append(rootNode->nextNode);
-		}
-	}
-	else
-	{
-		auto rootNode = std::make_shared<ViewLineString>();
-		rootNode->SetText(_text);
-		_ContentRichList.append(rootNode);
-	}
+    auto result = parser.LoadBuffer(content);
+    if(result)
+    {
+        auto rootNode = std::make_shared<ViewLineString>();
+        std::shared_ptr <ViewLineNode> curNode = rootNode;
+        for(auto& item:parser._ChildNodeList)
+        {
+             if(item.blockTag=="" || item.blockTag=="font")
+             {
+                 auto strNode = std::make_shared<ViewLineString>();
+                 strNode->SetColor(item.attribute("color"));
+                 strNode->SetText(QString::fromStdString(item.blockContent));
+                 curNode->nextNode = strNode;
+                 curNode = std::move(strNode);
+
+             }
+             else if(item.blockTag=="processBar")
+             {
+                 auto strNode = std::make_shared<ViewLineProcessBar>();
+                 strNode->SetProcess(QString::fromStdString(item.blockContent).toInt());
+                 curNode->nextNode = strNode;
+                 curNode = std::move(strNode);
+
+             }
+        }
+        if (rootNode->nextNode)
+        {
+            _ContentRichList.append(rootNode->nextNode);
+        }
+    }
+    else
+    {
+        printf("raw text\n");
+        auto rootNode = std::make_shared<ViewLineString>();
+        rootNode->SetText(_text);
+        _ContentRichList.append(rootNode);
+    }
+
+#else
+    pugi::xml_document doc;
+    std::string content = _text.toUtf8().toStdString();
+    pugi::xml_parse_result result = doc.load_buffer((char*)content.data(), content.size());
+    if (result)
+    {
+        auto rootNode = std::make_shared<ViewLineString>();
+        std::shared_ptr <ViewLineNode> curNode = rootNode;
+        for (auto it = doc.begin(); it != doc.end(); ++it)
+        {
+            pugi::xpath_node node = *it;
+            std::cout << "name " << node.node().attribute("color").value() << node.node().name() << node.node().child_value() << std::endl;
+            std::string name = node.node().name();
+            if (name == "font")
+            {
+                //std::string color = node.node().attribute("color").value();
+                auto strNode = std::make_shared<ViewLineString>();
+                strNode->SetColor(node.node().attribute("color").value());
+                strNode->SetText(node.node().child_value());
+                curNode->nextNode = strNode;
+                curNode = std::move(strNode);
+            }
+            else if (name == "processBar")
+            {
+                auto strNode = std::make_shared<ViewLineProcessBar>();
+                strNode->SetProcess(QString(node.node().child_value()).toInt());
+                curNode->nextNode = strNode;
+                curNode = std::move(strNode);
+            }
+        }
+        if (rootNode->nextNode)
+        {
+            _ContentRichList.append(rootNode->nextNode);
+        }
+    }
+    else
+    {
+        auto rootNode = std::make_shared<ViewLineString>();
+        rootNode->SetText(_text);
+        _ContentRichList.append(rootNode);
+    }
+#endif
+
 #else
 	_ContentList.append(_text);
 #endif
